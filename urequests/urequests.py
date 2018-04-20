@@ -57,6 +57,10 @@ def request(method, url, data=None, json=None, headers={}, stream=None, debug=Fa
     addr = ai[0][-1]
     s = usocket.socket()
     try:
+        s.settimeout(1.0)
+    except:
+        pass # The unix port doesn't support timeouts
+    try:
         s.connect(addr)
         if proto == 'https:':
             if not SUPPORT_SSL: print('HTTPS not supported: could not find ussl')
@@ -136,10 +140,17 @@ def request(method, url, data=None, json=None, headers={}, stream=None, debug=Fa
         # This removes a RAM usage optimization but allows us to always close the socket in the finally
         if out_file:
             with open(out_file, 'wb') as file:
-                buf = s.read(256)
+                buf = s.read(64)
                 while buf:
-                    file.write(buf)
-                    buf = s.read(256)
+                    try:
+                        file.write(buf)
+                        buf = s.read(64)
+                    except OSError as ex:
+                        # We catch the timeouts because on the ESP32 reading past the end of a ussl socket will just block
+                        if ex.args[0] == -110:
+                            break
+                        else:
+                            raise ex
         else:
             resp._cached = s.read()
             if debug:
